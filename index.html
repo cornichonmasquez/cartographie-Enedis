@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Réseau Électrique Enedis</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --panel:#fff; --border:#e0ddd6; --text:#1a1a1a; --dim:#888; --accent:#1a6ef5;
+  --c-source:#d4000f; --c-transfo:#e07000; --c-hta-ae:#9000cc;
+  --c-hta-so:#5500aa; --c-bt-ae:#008844; --c-bt-so:#004422;
+}
+html,body { width:100%; height:100%; overflow:hidden; font-family:'DM Sans',sans-serif; }
+#map { position:absolute; inset:0; z-index:1; }
+
+#panel {
+  position:absolute; left:0; top:0; bottom:0; width:270px; z-index:10;
+  background:var(--panel); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; box-shadow:2px 0 12px rgba(0,0,0,0.08);
+  overflow-y:auto;
+}
+#ph { padding:14px 16px 12px; border-bottom:1px solid var(--border); background:#f9f8f5; flex-shrink:0; }
+.logo { display:flex; align-items:center; gap:8px; }
+.logo-icon { width:26px; height:26px; background:var(--accent); border-radius:6px; display:flex; align-items:center; justify-content:center; }
+.logo-icon svg { fill:#fff; }
+h1 { font-size:13px; font-weight:500; }
+.sub { font-size:10px; color:var(--dim); font-family:'DM Mono',monospace; margin-top:1px; }
+
+.sec { padding:10px 16px; border-bottom:1px solid var(--border); flex-shrink:0; }
+.sec-lbl { font-size:9px; letter-spacing:.18em; color:var(--dim); text-transform:uppercase; font-family:'DM Mono',monospace; margin-bottom:8px; }
+
+.lr { display:flex; align-items:center; justify-content:space-between; padding:4px 0; cursor:pointer; user-select:none; }
+.ll { display:flex; align-items:center; gap:8px; }
+.dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.ln { width:20px; height:3px; border-radius:2px; flex-shrink:0; }
+.lname { font-size:12px; }
+.lcnt { font-size:10px; color:var(--dim); font-family:'DM Mono',monospace; margin-top:1px; }
+
+.zb { font-size:9px; background:#f0eee8; color:#aaa; border-radius:4px; padding:2px 4px; font-family:'DM Mono',monospace; }
+.zb.on { background:#e8f0ff; color:var(--accent); }
+
+.tog { width:30px; height:16px; background:#ddd; border-radius:8px; position:relative; transition:background .2s; flex-shrink:0; }
+.tog.on { background:var(--accent); }
+.tog::after { content:''; position:absolute; width:10px; height:10px; background:#fff; border-radius:50%; top:3px; left:3px; transition:transform .2s; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+.tog.on::after { transform:translateX(14px); }
+
+#ss { padding:10px 16px; border-bottom:1px solid var(--border); flex-shrink:0; }
+.sl { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--dim); font-family:'DM Mono',monospace; }
+.sd { width:6px; height:6px; border-radius:50%; background:#ccc; flex-shrink:0; }
+.sd.load { background:#f5a623; animation:bl .8s infinite; }
+.sd.ok { background:#22c55e; }
+.sd.err { background:#ef4444; }
+@keyframes bl { 0%,100%{opacity:1}50%{opacity:.3} }
+#pb-wrap { height:2px; background:#eee; margin-top:5px; border-radius:1px; overflow:hidden; }
+#pb { height:100%; background:var(--accent); width:0%; transition:width .3s; }
+
+#stats { padding:10px 16px; flex-shrink:0; }
+.si { display:flex; justify-content:space-between; padding:2px 0; }
+.sk { font-size:11px; color:var(--dim); }
+.sv { font-size:11px; font-family:'DM Mono',monospace; }
+.sv.c { color:var(--accent); }
+
+#hint { position:absolute; bottom:28px; left:280px; z-index:10; background:rgba(255,255,255,.95); border:1px solid #e8d090; border-radius:8px; padding:7px 11px; font-size:12px; color:#9a7000; box-shadow:0 2px 8px rgba(0,0,0,.1); display:none; max-width:230px; }
+#zi { position:absolute; bottom:28px; right:8px; z-index:10; background:rgba(255,255,255,.9); border:1px solid var(--border); border-radius:6px; padding:5px 9px; font-family:'DM Mono',monospace; font-size:11px; color:#555; }
+
+.leaflet-popup-content-wrapper { border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,.15); border:1px solid var(--border); }
+.pt { font-family:'DM Mono',monospace; font-size:10px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; color:#555; margin-bottom:6px; padding-bottom:5px; border-bottom:1px solid #eee; }
+.pr { display:flex; gap:7px; margin:2px 0; font-size:11px; }
+.pk { color:#999; min-width:75px; flex-shrink:0; }
+.pv { color:#111; font-weight:500; }
+
+.marker-cluster-small,.marker-cluster-medium,.marker-cluster-large { background:rgba(26,110,245,.12)!important; }
+.marker-cluster-small div,.marker-cluster-medium div,.marker-cluster-large div { background:rgba(26,110,245,.5)!important; color:#fff!important; font-family:'DM Mono',monospace!important; font-size:11px!important; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="panel">
+  <div id="ph">
+    <div class="logo">
+      <div class="logo-icon"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+      <div><h1>Réseau Enedis</h1><div class="sub">Open Data · France</div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-lbl">Postes</div>
+    <div class="lr" onclick="tog('source')">
+      <div class="ll"><div class="dot" style="background:var(--c-source)"></div>
+        <div><div class="lname">Postes sources</div><div class="lcnt" id="c-source">en attente…</div></div>
+      </div><div class="tog on" id="t-source"></div>
+    </div>
+    <div class="lr" onclick="tog('transfo')">
+      <div class="ll"><div class="dot" style="background:var(--c-transfo)"></div>
+        <div><div class="lname">Postes HTA/BT</div><div class="lcnt" id="c-transfo">chargement…</div></div>
+      </div><div class="tog on" id="t-transfo"></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-lbl">HTA — zoom ≥ 13</div>
+    <div class="lr" onclick="tog('hta-ae')">
+      <div class="ll"><div class="ln" style="background:var(--c-hta-ae)"></div>
+        <div><div class="lname">HTA aérien</div><div class="lcnt" id="c-hta-ae">en attente…</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px"><div class="zb" id="z-hta-ae">≥13</div><div class="tog on" id="t-hta-ae"></div></div>
+    </div>
+    <div class="lr" onclick="tog('hta-so')">
+      <div class="ll"><div class="ln" style="background:var(--c-hta-so)"></div>
+        <div><div class="lname">HTA souterrain</div><div class="lcnt" id="c-hta-so">en attente…</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px"><div class="zb" id="z-hta-so">≥13</div><div class="tog on" id="t-hta-so"></div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-lbl">BT — zoom ≥ 15</div>
+    <div class="lr" onclick="tog('bt-ae')">
+      <div class="ll"><div class="ln" style="background:var(--c-bt-ae)"></div>
+        <div><div class="lname">BT aérien</div><div class="lcnt" id="c-bt-ae">en attente…</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px"><div class="zb" id="z-bt-ae">≥15</div><div class="tog on" id="t-bt-ae"></div></div>
+    </div>
+    <div class="lr" onclick="tog('bt-so')">
+      <div class="ll"><div class="ln" style="background:var(--c-bt-so)"></div>
+        <div><div class="lname">BT souterrain</div><div class="lcnt" id="c-bt-so">en attente…</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px"><div class="zb" id="z-bt-so">≥15</div><div class="tog on" id="t-bt-so"></div></div>
+    </div>
+  </div>
+
+  <div id="ss">
+    <div class="sl"><div class="sd load" id="sd"></div><span id="st">Chargement…</span></div>
+    <div id="pb-wrap"><div id="pb"></div></div>
+  </div>
+
+  <div id="stats">
+    <div class="sec-lbl">Statistiques</div>
+    <div class="si"><span class="sk">Postes sources</span><span class="sv" id="s-source">—</span></div>
+    <div class="si"><span class="sk">Postes HTA/BT</span><span class="sv" id="s-transfo">—</span></div>
+    <div class="si"><span class="sk">Segments HTA</span><span class="sv" id="s-hta">—</span></div>
+    <div class="si"><span class="sk">Segments BT</span><span class="sv" id="s-bt">—</span></div>
+    <div class="si" style="margin-top:5px;padding-top:5px;border-top:1px solid var(--border)">
+      <span class="sk">Zoom</span><span class="sv c" id="s-zoom">—</span>
+    </div>
+  </div>
+</div>
+
+<div id="hint">🔍 Zoomez ≥ 13 pour voir les réseaux HTA/BT</div>
+<div id="zi">Zoom : <span id="zv">—</span></div>
+
+<script>
+const ZOOM_HTA = 13, ZOOM_BT = 15;
+const KEYS = ['source','transfo','hta-ae','hta-so','bt-ae','bt-so'];
+
+// Fichiers locaux disponibles sur GitHub
+// format points: [[lng, lat, commune, departement], ...]
+// format lignes: GeoJSON FeatureCollection
+const CFG = {
+  'source':  { file:'poste-source.json',        type:'point', color:'#d4000f', out:'#900008', r:7,   zMin:0,       lbl:'POSTE SOURCE',    fmt:'pts' },
+  'transfo': { file:'poste-electrique.json',     type:'point', color:'#e07000', out:'#a05000', r:5,   zMin:0,       lbl:'POSTE HTA/BT',    fmt:'pts' },
+  'hta-ae':  { file:'reseau-hta.json',           type:'line',  color:'#9000cc', w:2, dash:null, zMin:ZOOM_HTA, lbl:'HTA AÉRIEN',      fmt:'geojson' },
+  'hta-so':  { file:'reseau-souterrain-hta.json',type:'line',  color:'#5500aa', w:2, dash:'5,4',zMin:ZOOM_HTA, lbl:'HTA SOUTERRAIN',  fmt:'geojson' },
+  'bt-ae':   { file:'reseau-bt.json',            type:'line',  color:'#008844', w:1.5,dash:null,zMin:ZOOM_BT,  lbl:'BT AÉRIEN',       fmt:'geojson' },
+  'bt-so':   { file:'reseau-souterrain-bt.json', type:'line',  color:'#004422', w:1.5,dash:'4,3',zMin:ZOOM_BT, lbl:'BT SOUTERRAIN',   fmt:'geojson' },
+};
+
+const map = L.map('map',{zoomControl:false}).setView([46.6,2.5],6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  maxZoom:19
+}).addTo(map);
+L.control.zoom({position:'bottomright'}).addTo(map);
+
+const userOn = Object.fromEntries(KEYS.map(k=>[k,true]));
+const counts = Object.fromEntries(KEYS.map(k=>[k,0]));
+const layers = {};
+let zoom = map.getZoom();
+
+for(const key of KEYS){
+  const d = CFG[key];
+  if(d.type==='point') layers[key]=L.markerClusterGroup({maxClusterRadius:50,disableClusteringAtZoom:15});
+  else layers[key]=L.layerGroup();
+}
+
+function refreshLayers(){
+  for(const key of KEYS){
+    const show = userOn[key] && zoom>=CFG[key].zMin;
+    if(show && !map.hasLayer(layers[key])) map.addLayer(layers[key]);
+    else if(!show && map.hasLayer(layers[key])) map.removeLayer(layers[key]);
+  }
+  ['hta-ae','hta-so'].forEach(k=>{ const e=document.getElementById('z-'+k); if(e) e.classList.toggle('on',zoom>=ZOOM_HTA); });
+  ['bt-ae','bt-so'].forEach(k  =>{ const e=document.getElementById('z-'+k); if(e) e.classList.toggle('on',zoom>=ZOOM_BT); });
+  const anyNet=['hta-ae','hta-so','bt-ae','bt-so'].some(k=>userOn[k]);
+  document.getElementById('hint').style.display=(anyNet&&zoom<ZOOM_HTA)?'block':'none';
+  document.getElementById('zv').textContent=zoom;
+  document.getElementById('s-zoom').textContent=zoom;
+}
+
+function tog(key){
+  userOn[key]=!userOn[key];
+  document.getElementById('t-'+key).classList.toggle('on',userOn[key]);
+  refreshLayers();
+}
+
+function setStatus(msg,cls){ document.getElementById('sd').className='sd '+(cls||''); document.getElementById('st').textContent=msg; }
+function setProg(p){ document.getElementById('pb').style.width=p+'%'; }
+
+function updateStats(){
+  document.getElementById('s-source').textContent  = counts['source']>0  ? counts['source'].toLocaleString('fr'):'—';
+  document.getElementById('s-transfo').textContent = counts['transfo']>0 ? counts['transfo'].toLocaleString('fr'):'—';
+  const hta=(counts['hta-ae']||0)+(counts['hta-so']||0);
+  const bt=(counts['bt-ae']||0)+(counts['bt-so']||0);
+  document.getElementById('s-hta').textContent=hta>0?hta.toLocaleString('fr'):'—';
+  document.getElementById('s-bt').textContent=bt>0?bt.toLocaleString('fr'):'—';
+  for(const k of KEYS){ const e=document.getElementById('c-'+k); if(e) e.textContent=counts[k]>0?counts[k].toLocaleString('fr')+' obj.':'—'; }
+}
+
+function loadPoints(key, data){
+  const d = CFG[key];
+  const lyr = layers[key];
+  let n = 0;
+  for(const pt of data){
+    const [lng, lat, commune, dep] = pt;
+    if(!isFinite(lat)||!isFinite(lng)) continue;
+    const m = L.circleMarker([lat,lng],{
+      radius:d.r, fillColor:d.color, color:d.out,
+      weight:1.5, fillOpacity:.9, opacity:1
+    });
+    m.bindPopup(`<div class="pt">${d.lbl}</div><div class="pr"><span class="pk">Commune</span><span class="pv">${commune}</span></div><div class="pr"><span class="pk">Département</span><span class="pv">${dep}</span></div>`,{maxWidth:260});
+    lyr.addLayer(m);
+    n++;
+  }
+  return n;
+}
+
+function loadGeoJSON(key, geojson){
+  const d = CFG[key];
+  const lyr = layers[key];
+  let n = 0;
+  L.geoJSON(geojson,{
+    style:()=>({color:d.color,weight:d.w,opacity:.8,...(d.dash?{dashArray:d.dash}:{})}),
+    onEachFeature:(f,l)=>{
+      const p=f.properties||{};
+      const rows=Object.entries(p).filter(([k,v])=>v!=null&&v!=='').slice(0,5)
+        .map(([k,v])=>`<div class="pr"><span class="pk">${k}</span><span class="pv">${v}</span></div>`).join('');
+      l.bindPopup(`<div class="pt">${d.lbl}</div>${rows}`,{maxWidth:240});
+      lyr.addLayer(l);
+      n++;
+    }
+  });
+  return n;
+}
+
+async function loadLayer(key){
+  const d = CFG[key];
+  document.getElementById('c-'+key).textContent='chargement…';
+  const resp = await fetch(d.file);
+  if(!resp.ok) throw new Error(`HTTP ${resp.status} — fichier ${d.file} introuvable`);
+  const data = await resp.json();
+  let n = 0;
+  if(d.fmt==='pts') n = loadPoints(key, data);
+  else n = loadGeoJSON(key, data);
+  counts[key] = n;
+  return n;
+}
+
+async function loadAll(){
+  setStatus('Chargement des données…','load');
+  let done=0;
+  for(const key of KEYS){
+    setStatus(`Chargement ${CFG[key].lbl}…`,'load');
+    setProg(Math.round(done/KEYS.length*90));
+    try{
+      const n = await loadLayer(key);
+      console.log(`[${key}] ${n} objets`);
+    }catch(e){
+      console.warn(`[${key}] ${e.message}`);
+      document.getElementById('c-'+key).textContent='fichier manquant';
+    }
+    updateStats();
+    done++;
+  }
+  setProg(100);
+  const total=Object.values(counts).reduce((a,b)=>a+b,0);
+  setStatus(total>0?`${total.toLocaleString('fr')} objets chargés ✓`:'Aucune donnée', total>0?'ok':'err');
+  setTimeout(()=>setProg(0),800);
+  refreshLayers();
+}
+
+map.on('zoomend',()=>{ zoom=map.getZoom(); refreshLayers(); });
+window.addEventListener('load',()=>{ zoom=map.getZoom(); refreshLayers(); loadAll(); });
+</script>
+</body>
+</html>
