@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Réseau Électrique Enedis</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #f5f4f0;
+  --panel: #ffffff;
+  --border: #e0ddd6;
+  --text: #1a1a1a;
+  --text-dim: #888880;
+  --accent: #1a6ef5;
+  --c-source:  #d4000f;
+  --c-transfo: #e07000;
+  --c-hta-ae:  #9000cc;
+  --c-hta-so:  #5500aa;
+  --c-bt-ae:   #008844;
+  --c-bt-so:   #004422;
+}
+
+html, body { width:100%; height:100%; overflow:hidden; font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); }
+#map { position:absolute; inset:0; z-index:1; }
+
+#panel {
+  position:absolute; left:0; top:0; bottom:0; width:270px;
+  z-index:10; background:var(--panel); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; box-shadow:2px 0 12px rgba(0,0,0,0.08);
+  overflow-y:auto;
+}
+
+#panel-header {
+  padding:16px 16px 12px; border-bottom:1px solid var(--border); background:#f9f8f5; flex-shrink:0;
+}
+.logo-row { display:flex; align-items:center; gap:8px; }
+.logo-icon { width:28px; height:28px; background:var(--accent); border-radius:6px; display:flex; align-items:center; justify-content:center; }
+.logo-icon svg { fill:#fff; }
+h1 { font-size:13px; font-weight:500; color:#111; }
+.subtitle { font-size:11px; color:var(--text-dim); margin-top:2px; font-family:'DM Mono',monospace; }
+
+.section { padding:12px 16px; border-bottom:1px solid var(--border); flex-shrink:0; }
+.section-label { font-size:9px; letter-spacing:0.18em; color:var(--text-dim); text-transform:uppercase; font-family:'DM Mono',monospace; margin-bottom:10px; }
+
+.layer-row { display:flex; align-items:center; justify-content:space-between; padding:5px 0; cursor:pointer; user-select:none; }
+.layer-left { display:flex; align-items:center; gap:9px; }
+.swatch-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.swatch-line { width:22px; height:3px; border-radius:2px; flex-shrink:0; }
+
+.layer-name { font-size:12px; color:var(--text); }
+.layer-sub { font-size:10px; color:var(--text-dim); font-family:'DM Mono',monospace; margin-top:1px; }
+
+.zoom-badge { font-size:9px; background:#f0eee8; color:#aaa; border-radius:4px; padding:2px 5px; font-family:'DM Mono',monospace; white-space:nowrap; }
+.zoom-badge.active { background:#e8f0ff; color:var(--accent); }
+
+.tog { width:30px; height:16px; background:#ddd; border-radius:8px; position:relative; transition:background 0.2s; flex-shrink:0; }
+.tog.on { background:var(--accent); }
+.tog::after { content:''; position:absolute; width:10px; height:10px; background:#fff; border-radius:50%; top:3px; left:3px; transition:transform 0.2s; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
+.tog.on::after { transform:translateX(14px); }
+
+#status-section { padding:10px 16px; border-bottom:1px solid var(--border); flex-shrink:0; }
+.status-line { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-dim); font-family:'DM Mono',monospace; }
+.sdot { width:6px; height:6px; border-radius:50%; background:#ccc; flex-shrink:0; transition:background 0.3s; }
+.sdot.loading { background:#f5a623; animation:blink 0.8s infinite; }
+.sdot.ok { background:#22c55e; }
+.sdot.error { background:#ef4444; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+#progress { height:2px; background:#eee; margin-top:6px; border-radius:1px; overflow:hidden; }
+#pbar { height:100%; background:var(--accent); width:0%; transition:width 0.4s; }
+
+#stats-section { padding:10px 16px; flex-shrink:0; }
+.stat-item { display:flex; justify-content:space-between; align-items:center; padding:3px 0; }
+.stat-label { font-size:11px; color:var(--text-dim); }
+.stat-val { font-size:11px; font-family:'DM Mono',monospace; color:var(--text); font-weight:500; }
+.stat-val.colored { color:var(--accent); }
+
+#zoom-info { position:absolute; bottom:30px; right:10px; z-index:10; background:rgba(255,255,255,0.92); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-family:'DM Mono',monospace; font-size:11px; color:#555; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+
+#network-hint { position:absolute; bottom:30px; left:285px; z-index:10; background:rgba(255,255,255,0.95); border:1px solid #e8d090; border-radius:8px; padding:8px 12px; font-size:12px; color:#9a7000; box-shadow:0 2px 8px rgba(0,0,0,0.1); display:none; max-width:240px; }
+
+.leaflet-popup-content-wrapper { border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,0.15); border:1px solid var(--border); }
+.popup-title { font-family:'DM Mono',monospace; font-size:10px; font-weight:500; letter-spacing:0.12em; text-transform:uppercase; color:#555; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid #eee; }
+.popup-row { display:flex; gap:8px; margin:3px 0; font-size:12px; }
+.pk { color:#999; min-width:80px; flex-shrink:0; }
+.pv { color:#111; font-weight:500; word-break:break-word; }
+
+.marker-cluster-small, .marker-cluster-medium, .marker-cluster-large { background:rgba(26,110,245,0.12) !important; }
+.marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div { background:rgba(26,110,245,0.5) !important; color:#fff !important; font-family:'DM Mono',monospace !important; font-size:11px !important; font-weight:500 !important; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="panel">
+  <div id="panel-header">
+    <div class="logo-row">
+      <div class="logo-icon"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+      <div>
+        <h1>Réseau Enedis</h1>
+        <div class="subtitle">Open Data · France entière</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Postes</div>
+    <div class="layer-row" onclick="toggleLayer('source')">
+      <div class="layer-left">
+        <div class="swatch-dot" style="background:var(--c-source);box-shadow:0 0 0 2px #ffd0d3;"></div>
+        <div><div class="layer-name">Postes sources</div><div class="layer-sub" id="cnt-source">chargement…</div></div>
+      </div>
+      <div class="tog on" id="tog-source"></div>
+    </div>
+    <div class="layer-row" onclick="toggleLayer('transfo')">
+      <div class="layer-left">
+        <div class="swatch-dot" style="background:var(--c-transfo);box-shadow:0 0 0 2px #ffddb0;"></div>
+        <div><div class="layer-name">Postes HTA/BT</div><div class="layer-sub" id="cnt-transfo">chargement…</div></div>
+      </div>
+      <div class="tog on" id="tog-transfo"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Réseau HTA — zoom ≥ 13</div>
+    <div class="layer-row" onclick="toggleLayer('hta-ae')">
+      <div class="layer-left">
+        <div class="swatch-line" style="background:var(--c-hta-ae);"></div>
+        <div><div class="layer-name">HTA aérien</div><div class="layer-sub" id="cnt-hta-ae">chargement…</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="zoom-badge" id="zb-hta-ae">zoom ≥ 13</div>
+        <div class="tog on" id="tog-hta-ae"></div>
+      </div>
+    </div>
+    <div class="layer-row" onclick="toggleLayer('hta-so')">
+      <div class="layer-left">
+        <div class="swatch-line" style="background:var(--c-hta-so);"></div>
+        <div><div class="layer-name">HTA souterrain</div><div class="layer-sub" id="cnt-hta-so">chargement…</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="zoom-badge" id="zb-hta-so">zoom ≥ 13</div>
+        <div class="tog on" id="tog-hta-so"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Réseau BT — zoom ≥ 15</div>
+    <div class="layer-row" onclick="toggleLayer('bt-ae')">
+      <div class="layer-left">
+        <div class="swatch-line" style="background:var(--c-bt-ae);"></div>
+        <div><div class="layer-name">BT aérien</div><div class="layer-sub" id="cnt-bt-ae">chargement…</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="zoom-badge" id="zb-bt-ae">zoom ≥ 15</div>
+        <div class="tog on" id="tog-bt-ae"></div>
+      </div>
+    </div>
+    <div class="layer-row" onclick="toggleLayer('bt-so')">
+      <div class="layer-left">
+        <div class="swatch-line" style="background:var(--c-bt-so);"></div>
+        <div><div class="layer-name">BT souterrain</div><div class="layer-sub" id="cnt-bt-so">chargement…</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="zoom-badge" id="zb-bt-so">zoom ≥ 15</div>
+        <div class="tog on" id="tog-bt-so"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="status-section">
+    <div class="status-line"><div class="sdot loading" id="sdot"></div><span id="stext">Initialisation…</span></div>
+    <div id="progress"><div id="pbar"></div></div>
+  </div>
+
+  <div id="stats-section">
+    <div class="section-label">Statistiques</div>
+    <div class="stat-item"><span class="stat-label">Postes sources</span><span class="stat-val" id="s-source">—</span></div>
+    <div class="stat-item"><span class="stat-label">Postes HTA/BT</span><span class="stat-val" id="s-transfo">—</span></div>
+    <div class="stat-item"><span class="stat-label">Segments HTA</span><span class="stat-val" id="s-hta">—</span></div>
+    <div class="stat-item"><span class="stat-label">Segments BT</span><span class="stat-val" id="s-bt">—</span></div>
+    <div class="stat-item" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+      <span class="stat-label">Zoom actuel</span>
+      <span class="stat-val colored" id="s-zoom">—</span>
+    </div>
+  </div>
+</div>
+
+<div id="zoom-info">Zoom : <span id="zi-val">—</span></div>
+<div id="network-hint">🔍 Zoomez sur un quartier (zoom ≥ 13) pour voir les réseaux HTA/BT</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// DATASETS — IDs exacts confirmés sur data.enedis.fr
+// Base API : https://data.enedis.fr/api/explore/v2.1
+// ══════════════════════════════════════════════════════
+const API = 'https://data.enedis.fr/api/explore/v2.1/catalog/datasets';
+
+const ZOOM_HTA = 13;
+const ZOOM_BT  = 15;
+
+const CFG = {
+  'source':  { dsId:'poste-source',         type:'point', color:'#d4000f', outline:'#900008', radius:7,   zMin:0,        label:'POSTE SOURCE' },
+  'transfo': { dsId:'poste-electrique',      type:'point', color:'#e07000', outline:'#a05000', radius:5,   zMin:0,        label:'POSTE HTA/BT' },
+  'hta-ae':  { dsId:'reseau-hta',            type:'line',  color:'#9000cc', weight:2, dash:null,           zMin:ZOOM_HTA, label:'HTA AÉRIEN' },
+  'hta-so':  { dsId:'reseau-souterrain-hta', type:'line',  color:'#5500aa', weight:2, dash:'5,4',          zMin:ZOOM_HTA, label:'HTA SOUTERRAIN' },
+  'bt-ae':   { dsId:'reseau-bt',             type:'line',  color:'#008844', weight:1.5, dash:null,         zMin:ZOOM_BT,  label:'BT AÉRIEN' },
+  'bt-so':   { dsId:'reseau-souterrain-bt',  type:'line',  color:'#004422', weight:1.5, dash:'4,3',        zMin:ZOOM_BT,  label:'BT SOUTERRAIN' },
+};
+
+const KEYS = ['source','transfo','hta-ae','hta-so','bt-ae','bt-so'];
+
+// ══════════════════════════════════════════════════════
+// CARTE
+// ══════════════════════════════════════════════════════
+const map = L.map('map', { zoomControl:false }).setView([46.6, 2.5], 6);
+
+// Fond OSM clair avec noms de rues
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom:19
+}).addTo(map);
+
+L.control.zoom({ position:'bottomright' }).addTo(map);
+
+// ══════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════
+const userOn = Object.fromEntries(KEYS.map(k => [k, true]));
+const counts  = Object.fromEntries(KEYS.map(k => [k, 0]));
+const layers  = {};
+let currentZoom = map.getZoom();
+
+for (const key of KEYS) {
+  const cfg = CFG[key];
+  if (cfg.type === 'point') {
+    layers[key] = L.markerClusterGroup({ maxClusterRadius:50, disableClusteringAtZoom:15 });
+  } else {
+    layers[key] = L.layerGroup();
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// VISIBILITÉ
+// ══════════════════════════════════════════════════════
+function refreshLayers() {
+  const z = currentZoom;
+  for (const key of KEYS) {
+    const visible = userOn[key] && z >= CFG[key].zMin;
+    if (visible && !map.hasLayer(layers[key])) map.addLayer(layers[key]);
+    else if (!visible && map.hasLayer(layers[key])) map.removeLayer(layers[key]);
+  }
+  // Badges
+  ['hta-ae','hta-so'].forEach(k => { const el = document.getElementById('zb-'+k); if(el) el.classList.toggle('active', z >= ZOOM_HTA); });
+  ['bt-ae','bt-so'].forEach(k   => { const el = document.getElementById('zb-'+k); if(el) el.classList.toggle('active', z >= ZOOM_BT); });
+  // Hint
+  const anyNet = userOn['hta-ae'] || userOn['hta-so'] || userOn['bt-ae'] || userOn['bt-so'];
+  document.getElementById('network-hint').style.display = (anyNet && z < ZOOM_HTA) ? 'block' : 'none';
+  // Zoom display
+  document.getElementById('zi-val').textContent = z;
+  document.getElementById('s-zoom').textContent = z;
+}
+
+function toggleLayer(key) {
+  userOn[key] = !userOn[key];
+  document.getElementById('tog-'+key).classList.toggle('on', userOn[key]);
+  refreshLayers();
+}
+
+// ══════════════════════════════════════════════════════
+// FETCH — pagination complète
+// ══════════════════════════════════════════════════════
+async function fetchAll(dsId) {
+  const limit = 100;
+  let offset = 0;
+  let total = null;
+  let all = [];
+
+  while (true) {
+    const url = `${API}/${dsId}/records?limit=${limit}&offset=${offset}&timezone=Europe%2FParis`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} pour ${dsId}`);
+    const data = await resp.json();
+
+    if (total === null) total = data.total_count || 0;
+    if (!data.results || data.results.length === 0) break;
+
+    all = all.concat(data.results);
+    offset += data.results.length;
+
+    // Sécurité : arrêt si on a tout ou si trop grand (>50 000)
+    if (all.length >= total || all.length >= 50000) break;
+  }
+
+  return all;
+}
+
+// ══════════════════════════════════════════════════════
+// GÉOMÉTRIE
+// ══════════════════════════════════════════════════════
+function getGeom(rec) {
+  // Champs GeoJSON directs
+  for (const f of ['geo_shape','geoshape','geometry','the_geom','shape']) {
+    const v = rec[f];
+    if (v && v.type && v.coordinates) return v;
+  }
+  // geo_point_2d : { lat, lon } ou { lon, lat }
+  for (const f of ['geo_point_2d','geopoint','position','coordonnees']) {
+    const v = rec[f];
+    if (!v) continue;
+    if (v.lat !== undefined && v.lon !== undefined)
+      return { type:'Point', coordinates:[v.lon, v.lat] };
+    if (v.latitude !== undefined && v.longitude !== undefined)
+      return { type:'Point', coordinates:[v.longitude, v.latitude] };
+    if (Array.isArray(v) && v.length === 2)
+      return { type:'Point', coordinates:[v[1], v[0]] };
+  }
+  return null;
+}
+
+function buildPopup(rec, key) {
+  const skip = new Set(['geo_shape','geoshape','geometry','the_geom','shape','geo_point_2d','geopoint','position','coordonnees']);
+  const prio  = ['nom','name','libelle','commune','nom_commune','tension','type_ouvrage','longueur','nature','gestionnaire','code_departement'];
+  let rows='', shown=new Set(), extra=0;
+  for (const p of prio) {
+    const v = rec[p];
+    if (v != null && v !== '') { rows += `<div class="popup-row"><span class="pk">${p}</span><span class="pv">${v}</span></div>`; shown.add(p); }
+  }
+  for (const [k,v] of Object.entries(rec)) {
+    if (shown.has(k) || skip.has(k) || typeof v === 'object' || extra >= 3) continue;
+    if (v != null && v !== '') { rows += `<div class="popup-row"><span class="pk">${k}</span><span class="pv">${v}</span></div>`; extra++; }
+  }
+  return `<div class="popup-title">${CFG[key].label}</div>${rows || '<div style="color:#999;font-size:11px">Pas de données attributaires</div>'}`;
+}
+
+function renderRecords(key, records) {
+  const cfg = CFG[key];
+  const layer = layers[key];
+  let count = 0;
+
+  for (const rec of records) {
+    const geom = getGeom(rec);
+    if (!geom) continue;
+    const popup = buildPopup(rec, key);
+
+    if (cfg.type === 'point' && geom.type === 'Point') {
+      const [lng, lat] = geom.coordinates;
+      if (!isFinite(lat) || !isFinite(lng)) continue;
+      const m = L.circleMarker([lat, lng], {
+        radius:cfg.radius, fillColor:cfg.color, color:cfg.outline,
+        weight:1.5, fillOpacity:0.9, opacity:1
+      });
+      m.bindPopup(popup, { maxWidth:280 });
+      layer.addLayer(m);
+      count++;
+    } else if (cfg.type === 'line') {
+      let segs = [];
+      if (geom.type === 'LineString') segs = [geom.coordinates];
+      else if (geom.type === 'MultiLineString') segs = geom.coordinates;
+      for (const seg of segs) {
+        const lls = seg.map(c => [c[1],c[0]]).filter(c => isFinite(c[0]) && isFinite(c[1]));
+        if (lls.length < 2) continue;
+        const opts = { color:cfg.color, weight:cfg.weight, opacity:0.8 };
+        if (cfg.dash) opts.dashArray = cfg.dash;
+        const line = L.polyline(lls, opts);
+        line.bindPopup(popup, { maxWidth:240 });
+        layer.addLayer(line);
+      }
+      count++;
+    }
+  }
+  return count;
+}
+
+// ══════════════════════════════════════════════════════
+// UI HELPERS
+// ══════════════════════════════════════════════════════
+function setStatus(msg, state) {
+  document.getElementById('sdot').className = 'sdot ' + (state||'');
+  document.getElementById('stext').textContent = msg;
+}
+function setProgress(pct) { document.getElementById('pbar').style.width = pct + '%'; }
+
+function updateStats() {
+  document.getElementById('s-source').textContent  = counts['source']  > 0 ? counts['source'].toLocaleString('fr')  : '—';
+  document.getElementById('s-transfo').textContent = counts['transfo'] > 0 ? counts['transfo'].toLocaleString('fr') : '—';
+  const hta = (counts['hta-ae']||0) + (counts['hta-so']||0);
+  const bt  = (counts['bt-ae']||0)  + (counts['bt-so']||0);
+  document.getElementById('s-hta').textContent = hta > 0 ? hta.toLocaleString('fr') : '—';
+  document.getElementById('s-bt').textContent  = bt  > 0 ? bt.toLocaleString('fr')  : '—';
+  for (const key of KEYS) {
+    const el = document.getElementById('cnt-'+key);
+    if (el) el.textContent = counts[key] > 0 ? counts[key].toLocaleString('fr') + ' obj.' : '—';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// CHARGEMENT PRINCIPAL
+// ══════════════════════════════════════════════════════
+async function loadAll() {
+  setStatus('Connexion à Enedis Open Data…', 'loading');
+  let done = 0;
+
+  for (const key of KEYS) {
+    const cfg = CFG[key];
+    const label = cfg.label;
+    setStatus(`Chargement ${label}…`, 'loading');
+    setProgress(Math.round((done / KEYS.length) * 90));
+    document.getElementById('cnt-'+key).textContent = 'chargement…';
+
+    try {
+      const records = await fetchAll(cfg.dsId);
+      const n = renderRecords(key, records);
+      counts[key] = n;
+      document.getElementById('cnt-'+key).textContent = n > 0 ? n.toLocaleString('fr') + ' obj.' : '0 obj.';
+      console.log(`[${key}] ${n} objets chargés (${records.length} records bruts)`);
+    } catch(e) {
+      console.error(`[${key}] Erreur:`, e.message);
+      document.getElementById('cnt-'+key).textContent = 'erreur';
+    }
+
+    updateStats();
+    done++;
+  }
+
+  setProgress(100);
+  const total = Object.values(counts).reduce((a,b)=>a+b,0);
+  if (total === 0) {
+    setStatus('Aucune donnée — vérifiez la console (F12)', 'error');
+  } else {
+    setStatus(`${total.toLocaleString('fr')} objets chargés ✓`, 'ok');
+  }
+  setTimeout(() => setProgress(0), 1000);
+  refreshLayers();
+}
+
+// ══════════════════════════════════════════════════════
+// ÉVÉNEMENTS
+// ══════════════════════════════════════════════════════
+map.on('zoomend', () => { currentZoom = map.getZoom(); refreshLayers(); });
+
+window.addEventListener('load', () => {
+  currentZoom = map.getZoom();
+  refreshLayers();
+  loadAll();
+});
+</script>
+</body>
+</html>
